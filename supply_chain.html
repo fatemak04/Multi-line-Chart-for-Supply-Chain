@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supply Chain Cost & Profit Trends Visualization</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        svg {
+
+            border: 1px solid black;
+            padding: 8px;
+            background-color:white;
+        }
+        table{
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }    
+        th, td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: left;
+        }
+        .container {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .chart-area{
+            width: 55%;
+            height: 400px;
+        }
+        .table-area{
+            width: 40%;
+        }
+        .axis path,
+        .axis line {
+            fill: none;
+            stroke: #000;
+            stroke-width: 1px;
+            shape-rendering: crispEdges;
+        }
+        .axis-label {
+            font-size: 14px;
+            font-weight: bold;
+            font-family: 'Arial', sans-serif;
+        }
+        .chart-legend {
+            font-size: 14px;
+            font-family: 'Arial', sans-serif;
+        }
+        .legend-square {
+            width: 15px;
+            height: 15px;
+            display: inline-block;
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Supply Chain Cost & Profit Evaluation</h1>
+    <div class="container">
+        <section id = "data-overview" class="table-area">
+            <h2>Data Overview</h2>
+            <div id="overview-table"></div>
+        </section>
+
+        <section id ="visualization" class="chart-area">
+            <h2>Multi Line Chart Representation</h2>
+            <div id="line-chart" class="line-chart"></div>
+        </section>
+    </div>
+
+<script>
+    //Loading CSV data 
+    d3.csv("https://raw.githubusercontent.com/fatemak04/Data-Vis/refs/heads/main/data_sample(1).csv").then(function(functionset) {
+
+        //Convert date and calculate profit margin and costs
+        functionset.forEach(function(item) {
+        item.date = d3.timeParse("%m/%d/%y")(item.date);
+        item.EstimatedCost = +item.EstimatedCost;
+        item.RawMaterialCost = +item.RawMaterial;
+        item.LaborCost = +item.Workmanship;
+        item.StorageExpenses = +item.StorageCost;
+        item.ActualCost = item.RawMaterialCost + item.LaborCost + item.StorageExpenses;
+        item.SoldPrice = item.EstimatedCost * 1.1;
+        item.MarginOfProfit = item.SoldPrice - item.ActualCost;
+    }); 
+        
+    console.table(functionset);
+    createTable(functionset);
+    lineChart(functionset);
+
+    });
+
+//Function to create table
+function createTable(dataset) {
+    const table = d3.select("#overview-table").append("table");
+    const header = table.append("thead");
+    const body = table.append("tbody");
+
+    header.append("tr")
+    .selectAll("th")
+    .data(["Date", "Estimated Cost", "Raw Material", "Workmanship", "Storage", "Actual Cost", "Sold Price", "Margin of Profit"])
+    .enter()
+    .append("th")
+    .text(column => column);
+
+    const rows = body.selectAll("tr")
+    .data(dataset)
+    .enter()
+    .append("tr");
+
+    rows.selectAll("td")
+    .data(row => {
+        return ["date", "EstimatedCost", "RawMaterial", "Workmanship", "StorageCost", "ActualCost", "SoldPrice", "MarginOfProfit"].map(column => {
+            return {column: column, value: row[column]};
+        });
+    })
+    .enter()
+    .append("td")
+    .text(d => { 
+        if(d.column === "date") {
+            return d3.timeFormat("%m/%d/%Y")(d.value); 
+        } else if(typeof d.value === "number") {
+            return d.value.toFixed(2); 
+        } else {
+            return d.value; 
+        }
+    });
+}
+//Function to create a line chart 
+function lineChart(dataset) {
+    const margin = {top: 20, right: 100, bottom: 40, left: 100}, 
+        width = 850 - margin.left - margin.right,
+        height = 500 - margin.top - margin.bottom;
+        //creating svg container
+    const svg = d3.select("#line-chart").append("svg")
+        .attr("width", width + margin.left + margin.right)
+        .attr("height", height + margin.top + margin.bottom)
+        .append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    //define scale for x and y axis
+    const xScale = d3.scaleTime()
+        .range([0, width]);
+
+    const yScale = d3.scaleLinear()
+        .range([height, 0]);
+
+    //Color scale for different lines
+    const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
+
+    const xAxis = d3.axisBottom(xScale).tickFormat(d3.timeFormat("%b"));
+    const yAxis = d3.axisLeft(yScale);
+
+    const lineGenerator = d3.line()
+        .x(d => xScale(d.date))
+        .y(d => yScale(d.value));
+
+    //Define categories for each lines to plot
+    colorScale.domain(["EstimatedCost", "ActualCost", "SoldPrice", "MarginOfProfit"]);
+
+    const metrics = colorScale.domain().map(name => ({
+        name: name,
+        values: dataset.map(d => ({ date: d.date, value: +d[name] }))
+    }));
+
+    xScale.domain(d3.extent(dataset, d => d.date));
+    yScale.domain([
+        d3.min(metrics, c => d3.min(c.values, v => v.value)),
+        d3.max(metrics, c => d3.max(c.values, v => v.value))
+    ]);
+
+    //Append x-axis to SVG
+    svg.append("g")
+        .attr("class", "x axis")
+        .attr("transform", `translate(0,${height})`)
+        .call(xAxis)
+        .append("text")
+        .attr("fill", "#000")
+        .attr("x", width/2)
+        .attr("y", 40)
+        .style("y", "text-anchor", "middle")
+        .text("Date");
+
+    //Append y-axis to SVG
+    svg.append("g")
+        .attr("class","y axis")
+        .call(yAxis)
+        .append("text")
+        .attr("fill", "#000")
+        .attr("transform","rotate(-90)")
+        .attr("y", -50)
+        .attr("x", -height/2)
+        .style("text-anchor", "middle")
+        .text("Cost");
+
+    // Append each line for the metrices
+    metrics.forEach(category => {
+        svg.append("path")
+            .datum(category.values)
+            .attr("class", "line")
+            .style("stroke", colorScale(category.name))
+            .attr("d", lineGenerator)
+            .style("fill", "none")
+            .style("stroke-width", "2px");
+    });
+
+    //Add legend for the lines
+    const legend = svg.selectAll(".legend")
+        .data(metrics.slice().reverse())
+        .enter().append("g")
+        .attr("class", "legend")
+        .attr("transform", (d, i) => `translate(0,${i * 20})`);
+
+    //Add legend color boxes
+    legend.append("rect")
+        .attr("x", width - 18)
+        .attr("height", 18)
+        .attr("width", 18)
+        .style("fill", d => colorScale(d.name));
+
+    //Add legend labels
+    legend.append("text")
+        .attr("x", width - 24)
+        .attr("y", 9)
+        .attr("dy", ".35em")
+        .style("text-anchor", "end")
+        .text(d => d.name);
+}
+
+</script>
+    
+</body>
+</html>
